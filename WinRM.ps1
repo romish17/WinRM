@@ -91,10 +91,20 @@ function Start-CommandJobs {
             $done = @()
             foreach ($j in $global:Jobs) {
                 if ($j.HasMoreData) {
-                    $data = Receive-Job -Job $j -Keep
+                    $data = Receive-Job -Job $j -ErrorAction SilentlyContinue
                     foreach ($line in $data) {
-                        $prefix = if ($line.Kind -eq "Error") { "[ERREUR] " } else { "" }
-                        Append-Log $script:txtOut ("{0}{1}:`r`n{2}`r`n" -f $prefix,$line.Server,$line.Data)
+                        $msg = $line.Data
+                        if ($line.Kind -eq "Error") {
+                            # Nettoyer les messages WSManFault XML pour les rendre lisibles
+                            if ($msg -match '<f:WSManFault') {
+                                if ($msg -match 'Code="(\d+)"') { $code = $Matches[1] } else { $code = "inconnu" }
+                                if ($msg -match 'Machine="([^"]+)"') { $machine = $Matches[1] } else { $machine = $line.Server }
+                                $msg = "Erreur WinRM (code $code) sur $machine - Verifiez que le service WinRM est actif et que l'utilisateur a les droits d'acces distant."
+                            }
+                            Append-Log $script:txtOut ("[ERREUR] {0}:`r`n  {1}`r`n" -f $line.Server, $msg)
+                        } else {
+                            Append-Log $script:txtOut ("{0}:`r`n{1}`r`n" -f $line.Server, $msg)
+                        }
                     }
                 }
                 if ($j.State -in "Completed","Failed","Stopped") { $done += $j }
